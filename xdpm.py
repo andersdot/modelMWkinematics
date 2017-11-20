@@ -1,7 +1,8 @@
-impot pickle
+import pickle
 from astropy.table import Table
 from xdgmm import XDGMM
 import astropy.coordinates as coord
+import numpy as np
 
 def matrixize(data, err):
     """
@@ -41,8 +42,26 @@ xdgmm = xdgmm.fit(X, Xerr)
 xdgmm.save_model(xdgmmFilename1)
 
 
-X, Xerr = matrixize(cGal.l, cGal.b, cGal.pm_l_cosb, cGal.pm_b],
-                    [sdsstbl['ra_error']/3600., sdsstbl['dec_error']/3600., pmerr, pmerr])
+n = 10
+nstars = len(sdsstbl)
+ras    = np.random.normal(loc=sdsstbl['s_ra1'], scale=sdsstbl['ra_error']/3600., size=[n, nstars])
+decs   = np.random.normal(loc=sdsstbl['s_dec1'], scale=sdsstbl['dec_error']/3600., size=[n, nstars])
+pmras  = np.random.normal(loc=sdsstbl['pmra_new'], scale=pmerr, size=[n, nstars])
+pmdecs = np.random.normal(loc=sdsstbl['pmdec_new'], scale=pmerr, size=[n, nstars])
+
+
+cGalTest = coord.ICRS(ra=ras*u.deg, dec=decs*u.deg,
+                     pm_ra_cosdec=pmras*u.mas/u.yr, pm_dec=pmdecs*u.mas/u.yr)
+def std(x, n):
+    return np.sqrt(np.sum((x - np.mean(x, axis=0))**2., axis=0)/(n - 1))
+
+std_ls = std(cGalTest.l, n)
+std_bs = std(cGalTest.b, n)
+std_pml = std(cGalTest.pm_l_cosb, n)
+std_pmb = std(cGalTest.pm_b, n)
+
+X, Xerr = matrixize([cGal.l, cGal.b, cGal.pm_l_cosb, cGal.pm_b],
+                    [std_ls, std_bs, std_pml, std_pml])
 
 xdgmm = XDGMM(method='Bovy')
 xdgmm.n_components = ngauss

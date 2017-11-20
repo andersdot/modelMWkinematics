@@ -3,6 +3,8 @@ from astropy.table import Table
 from xdgmm import XDGMM
 import astropy.coordinates as coord
 import numpy as np
+import astropy.units as u
+import sys 
 
 def matrixize(data, err):
     """
@@ -14,7 +16,7 @@ def matrixize(data, err):
     Xerr[:, diag, diag] = np.vstack([e**2. for e in err]).T
     return X, Xerr
 
-ngauss = 512
+ngauss = int(sys.argv[1])
 xdgmmFilename1 = 'gaiasdss.radecpmrapmdec.ngauss' + str(ngauss)
 #xdgmmFilename2 = 'gaiasdss.radeclogpmrapmdec.ngauss' + str(ngauss)
 xdgmmFilename3 = 'gaiasdss.lbpmlpmb.ngauss' + str(ngauss)
@@ -26,15 +28,21 @@ with open(cache_file, "rb") as f:
             res = pickle.load(f)
 
 sdsstbl = Table(res)
+rakey = 'ra'
+deckey = 'dec'
 
-c = coord.ICRS(ra=sdsstbl['s_ra1']*u.deg, dec=sdsstbl['s_dec1']*u.deg,
+
+c = coord.ICRS(ra=sdsstbl[rakey]*u.deg, dec=sdsstbl[deckey]*u.deg,
                pm_ra_cosdec=sdsstbl['pmra_new']*u.mas/u.yr, pm_dec=sdsstbl['pmdec_new']*u.mas/u.yr)
 cGal = c.transform_to(coord.Galactic)
 pmerr = np.zeros(len(sdsstbl)) + 2.
 
+poserr = np.zeros(len(sdsstbl)) + 4./3600.
 
-X, Xerr = matrixize([sdsstbl['s_ra1'], sdsstbl['s_dec1'], sdsstbl['pmra_new'], sdsstbl['pmdec_new']],
-                    [sdsstbl['ra_error']/3600., sdsstbl['dec_error']/3600., pmerr, pmerr])
+#X, Xerr = matrixize([sdsstbl[rakey], sdsstbl[deckey], sdsstbl['pmra_new'], sdsstbl['pmdec_new']],
+#                    [sdsstbl['ra_error']/3600., sdsstbl['dec_error']/3600., pmerr, pmerr])
+X, Xerr = matrixize([sdsstbl[rakey], sdsstbl[deckey], sdsstbl['pmra_new'], sdsstbl['pmdec_new']],
+                    [poserr, poserr, pmerr, pmerr])
 
 xdgmm = XDGMM(method='Bovy')
 xdgmm.n_components = ngauss

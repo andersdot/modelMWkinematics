@@ -105,6 +105,6 @@ ENV/
 .mypy_cache/
 
 # files
-.ebf
-.csv
-.pkl
+*.ebf
+*.csv
+*.pkl

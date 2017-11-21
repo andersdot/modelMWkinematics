@@ -70,13 +70,14 @@ xdgmmfilename = xdgmmFilename1
 
 fig, axes = plt.subplots(1, 2, figsize=(10, 5))
 axes = axes.flatten()
-
+cache_file = 'gaiasdssHaloNew.pkl'
 with open(cache_file, "rb") as f:
             res = pickle.load(f)
-
+pmlim = 2
+bins = [np.linspace(-pmlim, pmlim, nbins), np.linspace(-pmlim, pmlim, nbins)]
 sdsstbl = Table(res)
-axes[0].scatter(sdsstbl[''])
-
+axes[0].hist2d(sdsstbl['ra'], sdsstbl['dec'], bins=100, norm=mpl.colors.LogNorm())
+axes[1].hist2d(logNegative(sdsstbl['pmra_new']), logNegative(sdsstbl['pmdec_new']), bins=bins, norm=mpl.colors.LogNorm())
 try:
     xdgmm = XDGMM(filename=xdgmmfilename)
     plotGMM(xdgmm, ax = axes, indices=[[0,1],[2,3]], labels=['pos', 'pm'])

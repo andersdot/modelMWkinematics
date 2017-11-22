@@ -14,7 +14,7 @@ import astropy.visualization as av
 import itertools
 from scipy import linalg
 from sklearn import mixture
-
+from sklearn.externals import joblib
 
 
 def plotPixels(x, y, pixel_array, mapSky, pixelImages, plotEach=False,
@@ -121,15 +121,19 @@ X, Xerr = matrixize([data['glon'], data['glat'], c.pm_l_cosb, c.pm_b], [0, 0, 0,
 
 # Fit a Gaussian mixture with EM using five components
 gmm = mixture.GaussianMixture(n_components=5, covariance_type='full').fit(X)
-np.save('gmm_n5_galactic', gmm)
+
+joblib.dump(gmm, 'gmm_n5_galactic.pkl') 
+
+
 plot_results(X, gmm.predict(X), gmm.means_, gmm.covariances_, 0,
              'Gaussian Mixture')
-plt.savefig('gmm_n5_galactic.pdf')
+plt.savefig('gmm_n5_galactic.png')
 plt.clf()
 # Fit a Dirichlet process Gaussian mixture using five components
 dpgmm = mixture.BayesianGaussianMixture(n_components=5,
                                         covariance_type='full').fit(X)
-np.save('dpgmm_n5_galactic', dpgmm)
+joblib.dump(gmm, 'dpgmm_n5_galactic.pkl') 
+
 plot_results(X, dpgmm.predict(X), dpgmm.means_, dpgmm.covariances_, 1,
              'Bayesian Gaussian Mixture with a Dirichlet process prior')
-plt.savefig('dpgmm_n5_galactic.pdf')
+plt.savefig('dpgmm_n5_galactic.png')

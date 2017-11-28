@@ -9,7 +9,7 @@ import astropy.units as u
 import healpy as hp
 import astropy.stats as st
 import astropy.visualization as av
-
+import xdpm
 
 import itertools
 from scipy import linalg
@@ -52,9 +52,9 @@ def plotPixels(x, y, pixel_array, mapSky, pixelImages, plotEach=False,
     plt.close(fig)
     plt.close(fignow)
 
-
+datafile = 'sdssgalaxy_1percent.ebf'
 #datafile = 'sdssHalo.ebf'
-datafile = '../GalaxiaData/sdssgalaxy_10percent.ebf'
+#datafile = '../GalaxiaData/sdssgalaxy_10percent.ebf'
 #datafile = '../GalaxiaData/sdssgalaxy_1percent.ebf'
 #datafile = '../GalaxiaData/sdssHalo.ebf'
 data = ebf.read(datafile, '/')
@@ -118,22 +118,48 @@ def plot_results(X, Y_, means, covariances, index, title):
     plt.title(title)
 
 X, Xerr = matrixize([data['glon'], data['glat'], c.pm_l_cosb, c.pm_b], [0, 0, 0, 0])
+gmmfile = 'gmm_n5_galactic.pkl'
+try:
+    with open(gmmfile) as f:
+        gmm = joblib.load(f)
+except IOError:
+    # Fit a Gaussian mixture with EM using five components
+    gmm = mixture.GaussianMixture(n_components=5, covariance_type='full').fit(X)
 
-# Fit a Gaussian mixture with EM using five components
-gmm = mixture.GaussianMixture(n_components=5, covariance_type='full').fit(X)
+    joblib.dump(gmm, gmmfile)
 
-joblib.dump(gmm, 'gmm_n5_galactic.pkl') 
+pmlim = 2
+nbins = 500
+bins = [np.linspace(-pmlim, pmlim, nbins), np.linspace(-pmlim, pmlim, nbins)]
+x1 = data['glon']
+y1 = data['glat']
+x2 = c.pm_l_cosb
+y2 = c.pm_b
+fig, axes = plt.subplots(1, 2, figsize = (10, 5))
+axes[0].hist2d(x1, y1, bins=100, norm=mpl.colors.LogNorm(), rasterized=True)
+axes[1].hist2d(xdpm.logNegative(x2.value), xdpm.logNegative(y2.value), bins=bins, norm=mpl.colors.LogNorm(), rasterized=True)
 
+xdpm.plotGMM(gmm, ax = axes, indices=[[0,1],[2,3]], labels=['pos', 'pm'])
+axes[0].set_xlabel('l')
+axes[0].set_ylabel('b')
+axes[1].set_xlabel('log |pml| + 1')
+axes[1].set_ylabel('log |pmb| + 1')
+axes[1].set_xlim(-2, 2)
+axes[1].set_ylim(-2, 2)
+fig.savefig('.'.join(gmmfile.split('.')[:-1])+'.pdf')
 
-plot_results(X, gmm.predict(X), gmm.means_, gmm.covariances_, 0,
-             'Gaussian Mixture')
-plt.savefig('gmm_n5_galactic.png')
-plt.clf()
+#plot_results(X, gmm.predict(X), gmm.means_, gmm.covariances_, 0,#
+#             'Gaussian Mixture')
+#plt.savefig('gmm_n5_galactic.png')
+#plt.clf()
+
+"""
 # Fit a Dirichlet process Gaussian mixture using five components
 dpgmm = mixture.BayesianGaussianMixture(n_components=5,
                                         covariance_type='full').fit(X)
-joblib.dump(gmm, 'dpgmm_n5_galactic.pkl') 
+joblib.dump(gmm, 'dpgmm_n5_galactic.pkl')
 
 plot_results(X, dpgmm.predict(X), dpgmm.means_, dpgmm.covariances_, 1,
              'Bayesian Gaussian Mixture with a Dirichlet process prior')
 plt.savefig('dpgmm_n5_galactic.png')
+"""

@@ -7,6 +7,10 @@ __pycache__/
 *.png
 *.pdf
 
+#err/out files
+*.err
+*.out
+
 # C extensions
 *.so
 

@@ -6,8 +6,9 @@ from astropy.coordinates.matrix_utilities import matrix_product, matrix_transpos
 from astropy.io import fits
 import pickle
 import scipy.interpolate as scint
-import matplotlib.pyplot as plt
 import matplotlib as mpl
+mpl.use('pdf')
+import matplotlib.pyplot as plt
 import gala.coordinates as gc
 from scipy.ndimage import gaussian_filter
 from mpl_toolkits.mplot3d import Axes3D
@@ -15,7 +16,8 @@ from matplotlib import cm
 from astropy_healpix import HEALPix
 import time
 import os.path
-
+import sys
+import csv
 
 class ArbitraryPoleFrame(coord.BaseCoordinateFrame):
 
@@ -206,12 +208,13 @@ def plotPMdiff(phi1min, phi1max, filename='sag_pm'):
 
 
 if __name__ == '__main__':
+    nside = 16
+    distances = [int(sys.argv[1])*u.kpc]
 
-    distances = [sys.argv[1]]
-
-    with open('gaiasdssHaloNew_30b.pkl') as f:
+    datafile = 'gaiasdssHaloNew_30b_dustcorrected.pkl'
+    with open(datafile) as f:
         data = pickle.load(f)
-
+    detected = 0
     xkey = 's_ra1'
     ykey = 's_dec1'
     pmxkey = 'pmra_new'
@@ -226,7 +229,6 @@ if __name__ == '__main__':
     phi1right = np.arange(20, 360+000.1, 5)*u.deg #[-30, -25, -20, -15, -10, -5, 0]*u.deg
 
 
-    nside = 2
     hp = HEALPix(nside=nside, order='ring', frame=coord.Galactic())
     centers = hp.healpix_to_skycoord(np.arange(0, hp.npix))
     centers = centers[centers.b >= 0.0*u.deg]
@@ -245,7 +247,7 @@ if __name__ == '__main__':
     thistime = time.clock()
 
     for distance in distances:
-
+        detectionFilename = 'detections_distance{0:02d}.txt'.format(int(distance.value))
         observed = coord.ICRS(ra=data[xkey]*u.deg, dec=data[ykey]*u.deg,
                               pm_ra_cosdec=data[pmxkey]*u.mas/u.yr, pm_dec=data[pmykey]*u.mas/u.yr,
                               distance=distance)
@@ -270,16 +272,28 @@ if __name__ == '__main__':
             phi2 = newframe.phi2
 
             for p1min, p1max in zip(phi1left, phi1right):
-                filename = filename_pre+'_dist{0:03d}_pm_{1:03d}_{2:03d}'.format(int(distance.value), int(p1min.value), int(p1max.value))
+                filename = filename_pre+'_dist{0:03d}_lpole{1:0.2f}_bpole{2:0.2f}_phi1{3:03d}_{4:03d}'.format(int(distance.value), lpole.value, bpole.value, int(p1min.value), int(p1max.value))
                 muphi1, signal_to_noise = plotPMdiff(p1min, p1max, filename=filename)
                 if muphi1 is not None:
-                    #print detections['distance'], distance.value
-                    detections['distance'].extend([distance.value]*len(muphi1))
-                    detections['muphi1'].extend([muphi1])
-                    detections['phi1'].extend([(p1min.value + p1max.value)/2.]*len(muphi1))
-                    detections['lpole'].extend([lpole.value]*len(muphi1))
-                    detections['bpole'].extend([bpole.value]*len(muphi1))
-                    detections['SN'].extend([signal_to_noise])
-                    footprint_filename = filename_pre+'_lpole{0:0.2f}__bpole{1:0.2f}_rot.pdf'.format(lpole.value, bpole.value)
-                    if not os.path.isfile(footprint_filename):
-                        plotFootprint(phi1.value, phi2.value, footprint_filename)
+                    if len(muphi1) > 0:
+                        detected += 1
+                        #print detections['distance'], distance.value
+                        detections['distance'].extend([distance.value]*len(muphi1))
+                        detections['muphi1'].extend([muphi1])
+                        detections['phi1'].extend([(p1min.value + p1max.value)/2.]*len(muphi1))
+                        detections['lpole'].extend([lpole.value]*len(muphi1))
+                        detections['bpole'].extend([bpole.value]*len(muphi1))
+                        detections['SN'].extend([signal_to_noise])
+                        footprint_filename = filename_pre+'_lpole{0:0.2f}_bpole{1:0.2f}_rot.png'.format(lpole.value, bpole.value)
+                        if not os.path.isfile(footprint_filename):
+                            plotFootprint(phi1.value, phi2.value, footprint_filename)
+                        if detected % 10 == 0:
+                            w = csv.writer(open(detectionFilename,"w"))
+                            for key, val in detections.items():
+                                w.writerow([key, val])
+                            f.close()
+        w = csv.writer(open(detectionFilename,"w"))
+        for key, val in detections.items():
+            w.writerow([key, val])
+        f.close()
+

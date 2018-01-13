@@ -18,6 +18,7 @@ import time
 import os.path
 import sys
 import csv
+import schwimmbad
 
 class ArbitraryPoleFrame(coord.BaseCoordinateFrame):
 
@@ -74,33 +75,31 @@ def plotFootprint(x, y, filename, nbins=250):
     fig.set_size_inches(10,10)
     fig.savefig(filename, rasterized=True)
 
+def signal2noise(phi1, deltaPhi1 = 5.*u.deg, deltaPhi2 = 0.5*u.deg,
+                 deltaPMphi1 = 15.*u.mas/u.yr, deltaPMphi2 = 5.*u.mas/u.yr,
+                 phi2MaxBackground = 5.0*u.deg, phi2MinBackground = 0.5*u.deg,
+                 histBinPM = 1.0*u.mas/u.yr, histBinPhi = 0.1*u.deg,
+                 minstars=1000., minFracBackground = 0.7, plotSNthreshold = 5.,
+                 detectionThreshold = 5., filename='sag_pm'):
+    phi1min = phi1 - deltaPhi1 #80*u.deg #-60.*u.deg #105*u.deg
+    phi1max = phi1 + deltaPhi1 #120*u.deg #-20.*u.deg #115*u.deg
+    phi2min = -deltaPhi2
+    phi2max = deltaPhi2
 
-def plotPMdiff(phi1min, phi1max, filename='sag_pm'):
-    minstars = 100.
-    minFracBackground = 0.5
-    plotSNthreshold = 5.
-    detectionThreshold = 5.
+    phi2max_b = phi2MaxBackground
+    phi2min_b = phi2MinBackground
 
-    phi1min = phi1min #80*u.deg #-60.*u.deg #105*u.deg
-    phi1max = phi1max #120*u.deg #-20.*u.deg #115*u.deg
-    phi2min = -0.5*u.deg
-    phi2max = 0.5*u.deg
-
-    phi2max_b = 5.0*u.deg
-    phi2min_b = 0.5*u.deg
-
-    dphi1 = phi1max - phi1min
-    dphi2 = phi2max - phi2min
+    dphi1 = 2.*deltaPhi1
+    dphi2 = 2.*deltaPhi2
     dphi2_b = phi2max_b - phi2min_b
 
-    areaSignal = dphi1*dphi2
-    areaBackground = (dphi1*dphi2_b)*2.
 
-    dpm1 = 15.#*u.mas/u.yr
-    dpm2 = 5.#*u.mas/u.yr
-    deltapm = 1.0#*u.mas/u.yr
+    dpm1 = deltaPMphi1.value#*u.mas/u.yr
+    dpm2 = deltaPMphi2.value#*u.mas/u.yr
+    deltapm = histBinPM.value#*u.mas/u.yr
 
-    deltaphi = 0.1
+    #histograms for determining area of background to area of signal
+    deltaphi = histBinPhi.value
 
     signal_edges_pm1 = [-dphi1/2., dphi1/2.]
     signal_edges_pm2 = [-dphi2/2., dphi2/2.]
@@ -108,13 +107,14 @@ def plotPMdiff(phi1min, phi1max, filename='sag_pm'):
     background_edges_pm2 = [-(dphi2_b + dphi2)/2., -dphi2/2.]
     backgtound_edges_pm2 = [dphi2/2., (dphi2_b+dphi2)/2.]
 
-    signal_indices = (phi1 >= phi1min) & (phi1 <= phi1max) &                      (phi2 >= phi2min) & (phi2 <= phi2max) #& colorCut & magCut
+    signal_indices = (phi1 >= phi1min) & (phi1 <= phi1max) & (phi2 >= phi2min) & (phi2 <= phi2max) #& colorCut & magCut
 
-    #check that there are more then 100 stars in the signal sample
+    #check that there are more then minstars in the signal sample
     if np.sum(signal_indices) < minstars:
-        return None, None
+        return None, None, None
     else:
-        background_indices = (phi1 >= phi1min) & (phi1 <= phi1max) &                              np.logical_or((phi2 > phi2min_b) & (phi2 <= phi2max_b),
+        background_indices = (phi1 >= phi1min) & (phi1 <= phi1max) & \
+                             np.logical_or((phi2 > phi2min_b) & (phi2 <= phi2max_b),
                                            (phi2 >= -phi2max_b) & (phi2 <= -phi2min_b)) #& colorCut & magCut
 
         phi1_edges = np.arange(phi1min.value, phi1max.value+000.1, deltaphi)
@@ -128,7 +128,7 @@ def plotPMdiff(phi1min, phi1max, filename='sag_pm'):
 
         #check that at least some fraction of the background is in the footprint
         if frac_back_in_footprint < minFracBackground:
-            return None, None
+            return None, None, None
         else:
             pm1_edges = np.arange(-dpm1, dpm1+0.001, deltapm)
             pm2_edges = np.arange(-dpm2, dpm2+0.001, deltapm)
@@ -153,147 +153,205 @@ def plotPMdiff(phi1min, phi1max, filename='sag_pm'):
             finalhist = gaussian_filter(H - Hback*areaNorm, sigma=1.5)
             #finalhist = H - Hback*areaNorm
 
-            H1D = np.sum(H[:,np.abs(ycenters) <= 5], axis=1)
-            Hback1D = np.sum(Hback[:,np.abs(ybackcenters) <= 5]*areaNorm, axis=1)
+            H1D = np.sum(H, axis=1)
+            Hback1D = np.sum(Hback*areaNorm, axis=1)
 
             Hdiff = H1D - Hback1D
             Signal_to_noise = Hdiff/np.sqrt(Hback1D)
 
             if np.max(Signal_to_noise) > plotSNthreshold:
-                fig = plt.figure(figsize=(15, 10))
-                ax1 = plt.subplot2grid((4, 2), (0, 0))
-                ax2 = plt.subplot2grid((4, 2), (0, 1))
-                ax3 = plt.subplot2grid((4, 2), (1, 0))
-                ax4 = plt.subplot2grid((4, 2), (1, 1))
-                ax5 = plt.subplot2grid((4, 2), (2, 0), colspan=2)
-                ax6 = plt.subplot2grid((4, 2), (3, 0), colspan=2)
-                plt.suptitle('Fraction of Background in Footprint: {0:0.2f}'.format(frac_back_in_footprint))
-
-                ax6.plot(xcenters, Signal_to_noise, label='S/N')
-                ax6.axhline(5, color='black', linestyle='--')
-                ax6.set_xlim(-dpm1, dpm1)
-                ax6.set_ylim(0,)
-                plt.legend()
-
-                blah = ax5.pcolormesh(xedges, yedges, finalhist.T, vmin=0) #, norm=mpl.colors.LogNorm(vmin=1, vmax=10))
-                ax5.set_xlabel('pm1')
-                ax5.set_ylabel('pm2')
-                ax5.axhline(0.0)
-
-                ax1.hist2d(phi1[signal_indices], phi2[signal_indices], bins=[phi1_edges, phi2_edges])
-                ax3.hist2d(phi1[background_indices], phi2[background_indices], bins=[phi1_edges, phi2_edges])
-
-                (counts, xedges, yedges, axis1) = ax2.hist2d(pmphi1[signal_indices], pmphi2[signal_indices],
-                                                                bins=[pm1_edges, pm2_edges], norm=mpl.colors.LogNorm())
-                (counts, xedges, yedges, axis2) = ax4.hist2d(pmphi1[background_indices], pmphi2[background_indices],
-                                                                bins=[pm1_edges, pm2_edges], norm=mpl.colors.LogNorm())
-
-                ax2.set_title('signal')
-                ax4.set_title('background')
-                fig.colorbar(axis1, ax=ax2)
-                fig.colorbar(axis2, ax=ax4)
-
-                for axis in [ax1, ax3]:
-                    axis.set_xlabel('phi1')
-                    axis.set_ylabel('phi2')
-                for axis in [ax2, ax4]:
-                    axis.set_xlabel('pm1')
-                    axis.set_ylabel('pm2')
-
-                plt.tight_layout()
-                plt.savefig(filename + '.png', figsize=(10, 15))
-
+                plotPMdiff(xcenters, Signal_to_noise, dpm1, xedges, yedges, finalhist, phi1,
+                               signal_indices, phi2, phi1_edges, phi2_edges, background_indices,
+                               pmphi1, pmphi2, pm1_edges, pm2_edges, filename, frac_back_in_footprint)
             detected = Signal_to_noise >= detectionThreshold
-            return xcenters[detected], Signal_to_noise[detected]
+
+            n = np.sum(detected)
+            detected = Signal_to_noise == np.max(Signal_to_noise)
+            return xcenters[detected], Signal_to_noise[detected], n
+
+def plotPMdiff(xcenters, Signal_to_noise, dpm1, xedges, yedges, finalhist, phi1,
+               signal_indices, phi2, phi1_edges, phi2_edges, background_indices,
+               pmphi1, pmphi2, pm1_edges, pm2_edges, filename, frac_back_in_footprint):
+
+    fig = plt.figure(figsize=(15, 10))
+    ax1 = plt.subplot2grid((4, 2), (0, 0))
+    ax2 = plt.subplot2grid((4, 2), (0, 1))
+    ax3 = plt.subplot2grid((4, 2), (1, 0))
+    ax4 = plt.subplot2grid((4, 2), (1, 1))
+    ax5 = plt.subplot2grid((4, 2), (2, 0), colspan=2)
+    ax6 = plt.subplot2grid((4, 2), (3, 0), colspan=2)
+    plt.suptitle('Fraction of Background in Footprint: {0:0.2f}'.format(frac_back_in_footprint))
+
+    ax6.plot(xcenters, Signal_to_noise, label='S/N')
+    ax6.axhline(5, color='black', linestyle='--')
+    ax6.set_xlim(-dpm1, dpm1)
+    ax6.set_ylim(0,)
+    plt.legend()
+
+    blah = ax5.pcolormesh(xedges, yedges, finalhist.T, vmin=0) #, norm=mpl.colors.LogNorm(vmin=1, vmax=10))
+    ax5.set_xlabel('pm1')
+    ax5.set_ylabel('pm2')
+    ax5.axhline(0.0)
+
+    ax1.hist2d(phi1[signal_indices], phi2[signal_indices], bins=[phi1_edges, phi2_edges])
+    ax3.hist2d(phi1[background_indices], phi2[background_indices], bins=[phi1_edges, phi2_edges])
+
+    (counts, xedges, yedges, axis1) = ax2.hist2d(pmphi1[signal_indices], pmphi2[signal_indices],
+                                                    bins=[pm1_edges, pm2_edges], norm=mpl.colors.LogNorm())
+    (counts, xedges, yedges, axis2) = ax4.hist2d(pmphi1[background_indices], pmphi2[background_indices],
+                                                    bins=[pm1_edges, pm2_edges], norm=mpl.colors.LogNorm())
+
+    ax2.set_title('signal')
+    ax4.set_title('background')
+    fig.colorbar(axis1, ax=ax2)
+    fig.colorbar(axis2, ax=ax4)
+
+    for axis in [ax1, ax3]:
+        axis.set_xlabel('phi1')
+        axis.set_ylabel('phi2')
+    for axis in [ax2, ax4]:
+        axis.set_xlabel('pm1')
+        axis.set_ylabel('pm2')
+
+    plt.tight_layout()
+    plt.savefig(filename + '.png', figsize=(10, 15))
 
 
-if __name__ == '__main__':
-    nside = 16
-    distances = [int(sys.argv[1])*u.kpc]
 
-    datafile = 'gaiasdssHaloNew_30b_dustcorrected.pkl'
-    with open(datafile) as f:
-        data = pickle.load(f)
-    detected = 0
-    xkey = 's_ra1'
-    ykey = 's_dec1'
-    pmxkey = 'pmra_new'
-    pmykey = 'pmdec_new'
-    lsr = [11.1, 12.1, 7.25]*u.km/u.s
-    galactic_v = [0.0, 220., 0.0]*u.km/u.s
-    v_sun = coord.CartesianDifferential(lsr + galactic_v)
+class Worker(object):
+    #set output path for file written by all processes
+    def __init__(self, output_path, distance):
+        self.output_path = output_path
+        self.distance = distance
 
+    #tell processes to write the file
+    def callback(self, result):
+        lpole, bpole, p1, muphi1, signal_to_noise, n = result
+        if muphi1 is not None:
+            with open(self.output_path, 'a') as f:
+                for l, b, p, mu, s2n, num in zip(lpole, bpole, p1, muphi1, signal_to_noise, n):
+                    f.write(','.join(l, b, p, mu, s2n, num) + '\n')
 
-    #distances = np.arange(5, 21.0001, 5)*u.kpc
-    phi1left = np.arange(0, 340+000.1, 5)*u.deg #[-50, -45, -40, -35, -30, -25, -20]*u.deg
-    phi1right = np.arange(20, 360+000.1, 5)*u.deg #[-30, -25, -20, -15, -10, -5, 0]*u.deg
+    #when called, do the work
+    def __call__(self, task):
+        print task
+        return self.work(task)
 
+    #work for each process
+    def work(self, task):
+        #lpole = centers.l
+        #bpole = centers.b
+        phiShift = 5*u.deg
 
-    hp = HEALPix(nside=nside, order='ring', frame=coord.Galactic())
-    centers = hp.healpix_to_skycoord(np.arange(0, hp.npix))
-    centers = centers[centers.b >= 0.0*u.deg]
+        starttime = time.clock()
+        datafile = 'gaiasdssHaloNew_30b_dustcorrected.pkl'
+        with open(datafile) as f:
+            data = pickle.load(f)
+        thistime = time.clock()
+        print 'time to read in data :', thistime - starttime
 
+        xkey = 's_ra1'
+        ykey = 's_dec1'
+        pmxkey = 'pmra_new'
+        pmykey = 'pmdec_new'
+        filename_pre = 'test'
 
-    detections = {'distance':[],
-                  'muphi1':[],
-                  'phi1':[],
-                  'lpole':[],
-                  'bpole':[],
-                  'SN':[]}
-
-
-    filename_pre = 'test'
-    start = time.clock()
-    thistime = time.clock()
-
-    for distance in distances:
-        detectionFilename = 'detections_distance{0:02d}.txt'.format(int(distance.value))
+        #define the velocity of the sun wrt galactic center
+        lsr = [11.1, 12.1, 7.25]*u.km/u.s
+        galactic_v = [0.0, 220., 0.0]*u.km/u.s
+        v_sun = coord.CartesianDifferential(lsr + galactic_v)
         observed = coord.ICRS(ra=data[xkey]*u.deg, dec=data[ykey]*u.deg,
                               pm_ra_cosdec=data[pmxkey]*u.mas/u.yr, pm_dec=data[pmykey]*u.mas/u.yr,
-                              distance=distance)
+                              distance=self.distance*u.kpc)
         #take out sun's motion
         observed = observed.transform_to(coord.Galactic)
         rep = observed.cartesian.without_differentials()
         rep = rep.with_differentials(observed.cartesian.differentials['s'] + v_sun)
         observed_nosunv = coord.Galactic(rep)
 
-        for lpole, bpole in zip(centers.l, centers.b):
-            print distance, lpole.value, bpole.value, time.clock() - thistime, time.clock()-start
-            thistime = time.clock()
+        #define phi1 array will be the search centers along the great circle
+        phi1 = np.arange(0, 360+0.0001, phiShift.value)*u.deg
+
+        #for a given pole, set up lists of possible phi1s that have detections
+        phi1_set = []
+        muphi1_set = []
+        signal_to_noise_set = []
+        n_set = []
+        lpole_set = []
+        bpole_set = []
+
+        for t in task:
+            begLoop = time.clock()
+            lpole = t.l
+            bpole = t.b
+            #define the pole where the equator is the great circle
             pole = coord.Galactic(l=lpole, b=bpole)
-            #print pole
             frame = ArbitraryPoleFrame(pole=pole)
             #align frame with pole
-            newframe = observed_nosunv.transform_to(frame)
+            newframe = data.transform_to(frame)
 
             pmphi1 = newframe.pm_phi1_cosphi2
             pmphi2 = newframe.pm_phi2
             phi1 = newframe.phi1 #.wrap_at(180*u.deg) #.wrap_at(180*u.deg)
             phi2 = newframe.phi2
 
-            for p1min, p1max in zip(phi1left, phi1right):
-                filename = filename_pre+'_dist{0:03d}_lpole{1:0.2f}_bpole{2:0.2f}_phi1{3:03d}_{4:03d}'.format(int(distance.value), lpole.value, bpole.value, int(p1min.value), int(p1max.value))
-                muphi1, signal_to_noise = plotPMdiff(p1min, p1max, filename=filename)
-                if muphi1 is not None:
-                    if len(muphi1) > 0:
-                        detected += 1
-                        #print detections['distance'], distance.value
-                        detections['distance'].extend([distance.value]*len(muphi1))
-                        detections['muphi1'].extend([muphi1])
-                        detections['phi1'].extend([(p1min.value + p1max.value)/2.]*len(muphi1))
-                        detections['lpole'].extend([lpole.value]*len(muphi1))
-                        detections['bpole'].extend([bpole.value]*len(muphi1))
-                        detections['SN'].extend([signal_to_noise])
-                        footprint_filename = filename_pre+'_lpole{0:0.2f}_bpole{1:0.2f}_rot.png'.format(lpole.value, bpole.value)
-                        if not os.path.isfile(footprint_filename):
-                            plotFootprint(phi1.value, phi2.value, footprint_filename)
-                        if detected % 10 == 0:
-                            w = csv.writer(open(detectionFilename,"w"))
-                            for key, val in detections.items():
-                                w.writerow([key, val])
-                            f.close()
-        w = csv.writer(open(detectionFilename,"w"))
-        for key, val in detections.items():
-            w.writerow([key, val])
-        f.close()
+            for p1 in phi1:
+                filename = filename_pre+'_dist{0:03d}_lpole{1:0.2f}_bpole{2:0.2f}_phi1{3:03d}'.format(int(distance.value), lpole.value, bpole.value, int(p1.value))
+                muphi1, signal_to_noise, number_of_detections = signal2noise(data, p1, filename=filename)
+                if number_of_detections > 0:
+                    phi1_set.extend(p1)
+                    muphi1_set.extend(muphi1)
+                    signal_to_noise_set.extend(signal_to_noise)
+                    n_set.extend(number_of_detections)
+            ndetect = len(phi1_set)
+            lpole_set.extend([lpole]*ndetect)
+            bpole_set.extend([bpole]*ndetect)
+            endLoop = time.clock()
+            print 'time for each pole: ', endLoop - begLoop
+        return lpole_set, bpole_set, phi1_set, muphi1_set, signal_to_noise_set, n_set
 
+def main(pool, distance=20, filename='output_file.txt', nside=64):
+
+    #calculate pole centers
+    hp = HEALPix(nside=nside, order='ring', frame=coord.Galactic())
+    centers = hp.healpix_to_skycoord(np.arange(0, hp.npix))
+    #only keep poles above equator to not redo calculate with opposite pole
+    centers = centers[centers.b >= 0.0*u.deg]
+    #pad centers to match to number of processors
+    nprocs = pool.size
+    ncenters = centers.shape[0]
+    ncenters_per_proc = np.ceil(ncenters/float(nprocs))
+    npads = nprocs*ncenters_per_proc - ncenters
+    skypad = coord.SkyCoord(np.zeros(int(npads)), np.zeros(int(npads)), frame='galactic', unit=u.deg)
+    centers = coord.concatenate((centers, skypad))
+    #reshape centers so each worker gets a block of them
+    centers = centers.reshape(nprocs, int(ncenters_per_proc))
+    print 'number of workers: ', nprocs
+    print 'number of poles: ', ncenters
+    print 'number of poles per worker: ', ncenters_per_proc
+    print 'number of poles added as padding: ', npads
+    print 'shape of poles array: ', np.shape(centers)
+    #instantiate worker with filename results will be saved to
+    worker = Worker(filename, args.dist)
+    #you better work !
+    for r in pool.map(worker, list(centers), callback=worker.callback):
+        pass
+
+if __name__ == '__main__':
+
+    import schwimmbad
+    from argparse import ArgumentParser
+    parser = ArgumentParser(description = 'Search for cold streams in stellar density maps.')
+    parser.add_argument('--distance', dest='dist', default=20, type=int, help='distance to stream in kpc')
+    parser.add_argument('--nside', dest='nside', default=64, type=int, help='determines number of poles: 12*nside^2')
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--ncores', dest='n_cores', default=1, type=int, help='number of processes (uses multiprocessing).')
+    group.add_argument('--mpi', dest='mpi', default=False, action='store_true', help='run with mpi.')
+    args = parser.parse_args()
+    print args
+    #intelligently choose pool based on command line arguments passed
+    pool = schwimmbad.choose_pool(mpi=args.mpi, processes=args.n_cores)
+    filename = 'detections_distance{0:02d}_nside{1:03d}.txt'.format(args.dist, args.nside)
+    #start running
+    main(pool, distance=args.dist, filename=filename, nside=args.nside)

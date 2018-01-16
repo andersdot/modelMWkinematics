@@ -75,14 +75,14 @@ def plotFootprint(x, y, filename, nbins=250):
     fig.set_size_inches(10,10)
     fig.savefig(filename, rasterized=True)
 
-def signal2noise(phi1, deltaPhi1 = 5.*u.deg, deltaPhi2 = 0.5*u.deg,
+def signal2noise(phi1, phi2, pmphi1, pmphi2, p1, deltaPhi1 = 5.*u.deg, deltaPhi2 = 0.5*u.deg,
                  deltaPMphi1 = 15.*u.mas/u.yr, deltaPMphi2 = 5.*u.mas/u.yr,
                  phi2MaxBackground = 5.0*u.deg, phi2MinBackground = 0.5*u.deg,
                  histBinPM = 1.0*u.mas/u.yr, histBinPhi = 0.1*u.deg,
                  minstars=1000., minFracBackground = 0.7, plotSNthreshold = 5.,
                  detectionThreshold = 5., filename='sag_pm'):
-    phi1min = phi1 - deltaPhi1 #80*u.deg #-60.*u.deg #105*u.deg
-    phi1max = phi1 + deltaPhi1 #120*u.deg #-20.*u.deg #115*u.deg
+    phi1min = p1 - deltaPhi1 #80*u.deg #-60.*u.deg #105*u.deg
+    phi1max = p1 + deltaPhi1 #120*u.deg #-20.*u.deg #115*u.deg
     phi2min = -deltaPhi2
     phi2max = deltaPhi2
 
@@ -111,7 +111,7 @@ def signal2noise(phi1, deltaPhi1 = 5.*u.deg, deltaPhi2 = 0.5*u.deg,
 
     #check that there are more then minstars in the signal sample
     if np.sum(signal_indices) < minstars:
-        return None, None, None
+        return None, None, 0
     else:
         background_indices = (phi1 >= phi1min) & (phi1 <= phi1max) & \
                              np.logical_or((phi2 > phi2min_b) & (phi2 <= phi2max_b),
@@ -128,7 +128,7 @@ def signal2noise(phi1, deltaPhi1 = 5.*u.deg, deltaPhi2 = 0.5*u.deg,
 
         #check that at least some fraction of the background is in the footprint
         if frac_back_in_footprint < minFracBackground:
-            return None, None, None
+            return None, None, 0
         else:
             pm1_edges = np.arange(-dpm1, dpm1+0.001, deltapm)
             pm2_edges = np.arange(-dpm2, dpm2+0.001, deltapm)
@@ -166,6 +166,7 @@ def signal2noise(phi1, deltaPhi1 = 5.*u.deg, deltaPhi2 = 0.5*u.deg,
             detected = Signal_to_noise >= detectionThreshold
 
             n = np.sum(detected)
+            if not n: n = 0
             detected = Signal_to_noise == np.max(Signal_to_noise)
             return xcenters[detected], Signal_to_noise[detected], n
 
@@ -230,25 +231,26 @@ class Worker(object):
         if muphi1 is not None:
             with open(self.output_path, 'a') as f:
                 for l, b, p, mu, s2n, num in zip(lpole, bpole, p1, muphi1, signal_to_noise, n):
-                    f.write(','.join(l, b, p, mu, s2n, num) + '\n')
+
+                    f.write(','.join(['{:10.6f}'.format(x) for x in [l, b, p, mu, s2n, num]]) + '\n')
 
     #when called, do the work
     def __call__(self, task):
-        print task
+        print(task)
         return self.work(task)
 
     #work for each process
     def work(self, task):
         #lpole = centers.l
         #bpole = centers.b
-        phiShift = 5*u.deg
+        phiShift = 20*u.deg
 
         starttime = time.clock()
-        datafile = 'gaiasdssHaloNew_30b_dustcorrected.pkl'
-        with open(datafile) as f:
+        datafile = 'gaiasdssHaloNew_30b_dustcorrected_python3.pkl' #'gaiasdssHaloNew_30b_dustcorrected.pkl'
+        with open(datafile, 'rb') as f:
             data = pickle.load(f)
         thistime = time.clock()
-        print 'time to read in data :', thistime - starttime
+        print('time to read in data :', thistime - starttime)
 
         xkey = 's_ra1'
         ykey = 's_dec1'
@@ -270,7 +272,7 @@ class Worker(object):
         observed_nosunv = coord.Galactic(rep)
 
         #define phi1 array will be the search centers along the great circle
-        phi1 = np.arange(0, 360+0.0001, phiShift.value)*u.deg
+        phi1_search_array = np.arange(0, 360+0.0001, phiShift.value)*u.deg
 
         #for a given pole, set up lists of possible phi1s that have detections
         phi1_set = []
@@ -288,26 +290,32 @@ class Worker(object):
             pole = coord.Galactic(l=lpole, b=bpole)
             frame = ArbitraryPoleFrame(pole=pole)
             #align frame with pole
-            newframe = data.transform_to(frame)
+            newframe = observed_nosunv.transform_to(frame)
 
             pmphi1 = newframe.pm_phi1_cosphi2
             pmphi2 = newframe.pm_phi2
             phi1 = newframe.phi1 #.wrap_at(180*u.deg) #.wrap_at(180*u.deg)
             phi2 = newframe.phi2
 
-            for p1 in phi1:
-                filename = filename_pre+'_dist{0:03d}_lpole{1:0.2f}_bpole{2:0.2f}_phi1{3:03d}'.format(int(distance.value), lpole.value, bpole.value, int(p1.value))
-                muphi1, signal_to_noise, number_of_detections = signal2noise(data, p1, filename=filename)
+            for p1 in phi1_search_array:
+                filename = filename_pre+'_dist{0:03d}_lpole{1:0.2f}_bpole{2:0.2f}_phi1{3:03d}'.format(int(self.distance), lpole.value, bpole.value, int(p1.value))
+                muphi1, signal_to_noise, number_of_detections = signal2noise(phi1, phi2, pmphi1, pmphi2, p1, filename=filename)
                 if number_of_detections > 0:
-                    phi1_set.extend(p1)
+                    phi1_set.append(p1.value)
                     muphi1_set.extend(muphi1)
                     signal_to_noise_set.extend(signal_to_noise)
-                    n_set.extend(number_of_detections)
-            ndetect = len(phi1_set)
-            lpole_set.extend([lpole]*ndetect)
-            bpole_set.extend([bpole]*ndetect)
+                    n_set.append(number_of_detections)
+                    lpole_set.append(lpole.value)
+                    bpole_set.append(bpole.value)
+                #if number_of_detections > 1:
+                #    phi1_set.extend(p1.value)
+                #    muphi1_set.extend(muphi1)
+                #    signal_to_noise_set.extend(signal_to_noise)
+                #    n_set.extend(number_of_detections)
+                #    lpole_set.extend(lpole.value)
+                #    bpole_set.extend(bpole.value)
             endLoop = time.clock()
-            print 'time for each pole: ', endLoop - begLoop
+            print('time for each pole: ', endLoop - begLoop)
         return lpole_set, bpole_set, phi1_set, muphi1_set, signal_to_noise_set, n_set
 
 def main(pool, distance=20, filename='output_file.txt', nside=64):
@@ -326,11 +334,11 @@ def main(pool, distance=20, filename='output_file.txt', nside=64):
     centers = coord.concatenate((centers, skypad))
     #reshape centers so each worker gets a block of them
     centers = centers.reshape(nprocs, int(ncenters_per_proc))
-    print 'number of workers: ', nprocs
-    print 'number of poles: ', ncenters
-    print 'number of poles per worker: ', ncenters_per_proc
-    print 'number of poles added as padding: ', npads
-    print 'shape of poles array: ', np.shape(centers)
+    print( 'number of workers: ', nprocs)
+    print( 'number of poles: ', ncenters)
+    print( 'number of poles per worker: ', ncenters_per_proc)
+    print( 'number of poles added as padding: ', npads)
+    print( 'shape of poles array: ', np.shape(centers))
     #instantiate worker with filename results will be saved to
     worker = Worker(filename, args.dist)
     #you better work !
@@ -349,7 +357,7 @@ if __name__ == '__main__':
     group.add_argument('--ncores', dest='n_cores', default=1, type=int, help='number of processes (uses multiprocessing).')
     group.add_argument('--mpi', dest='mpi', default=False, action='store_true', help='run with mpi.')
     args = parser.parse_args()
-    print args
+    print(args)
     #intelligently choose pool based on command line arguments passed
     pool = schwimmbad.choose_pool(mpi=args.mpi, processes=args.n_cores)
     filename = 'detections_distance{0:02d}_nside{1:03d}.txt'.format(args.dist, args.nside)

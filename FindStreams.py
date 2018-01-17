@@ -79,7 +79,7 @@ def signal2noise(phi1, phi2, pmphi1, pmphi2, p1, deltaPhi1 = 5.*u.deg, deltaPhi2
                  deltaPMphi1 = 15.*u.mas/u.yr, deltaPMphi2 = 5.*u.mas/u.yr,
                  phi2MaxBackground = 5.0*u.deg, phi2MinBackground = 0.5*u.deg,
                  histBinPM = 1.0*u.mas/u.yr, histBinPhi = 0.1*u.deg,
-                 minstars=1000., minFracBackground = 0.7, plotSNthreshold = 5.,
+                 minstars=1000., minFracBackground = 0.7, plotSNthreshold = 10.,
                  detectionThreshold = 5., filename='sag_pm'):
     phi1min = p1 - deltaPhi1 #80*u.deg #-60.*u.deg #105*u.deg
     phi1max = p1 + deltaPhi1 #120*u.deg #-20.*u.deg #115*u.deg
@@ -236,14 +236,18 @@ class Worker(object):
 
     #when called, do the work
     def __call__(self, task):
-        print(task)
+        #print(task)
         return self.work(task)
 
     #work for each process
     def work(self, task):
         #lpole = centers.l
         #bpole = centers.b
-        phiShift = 20*u.deg
+
+        #define phi1 array will be the search centers along the great circle
+        phiShift = 5.*u.deg #how much to shift each window by
+        phi1_search_array = np.arange(0, 360+0.0001, phiShift.value)*u.deg
+        deltaPhi1 = 5.*u.deg #width of window/2
 
         starttime = time.clock()
         datafile = 'gaiasdssHaloNew_30b_dustcorrected_python3.pkl' #'gaiasdssHaloNew_30b_dustcorrected.pkl'
@@ -271,9 +275,6 @@ class Worker(object):
         rep = rep.with_differentials(observed.cartesian.differentials['s'] + v_sun)
         observed_nosunv = coord.Galactic(rep)
 
-        #define phi1 array will be the search centers along the great circle
-        phi1_search_array = np.arange(0, 360+0.0001, phiShift.value)*u.deg
-
         #for a given pole, set up lists of possible phi1s that have detections
         phi1_set = []
         muphi1_set = []
@@ -281,7 +282,7 @@ class Worker(object):
         n_set = []
         lpole_set = []
         bpole_set = []
-
+        npoles = 0
         for t in task:
             begLoop = time.clock()
             lpole = t.l
@@ -299,7 +300,7 @@ class Worker(object):
 
             for p1 in phi1_search_array:
                 filename = filename_pre+'_dist{0:03d}_lpole{1:0.2f}_bpole{2:0.2f}_phi1{3:03d}'.format(int(self.distance), lpole.value, bpole.value, int(p1.value))
-                muphi1, signal_to_noise, number_of_detections = signal2noise(phi1, phi2, pmphi1, pmphi2, p1, filename=filename)
+                muphi1, signal_to_noise, number_of_detections = signal2noise(phi1, phi2, pmphi1, pmphi2, p1, filename=filename, deltaPhi1 = deltaPhi1)
                 if number_of_detections > 0:
                     phi1_set.append(p1.value)
                     muphi1_set.extend(muphi1)
@@ -315,7 +316,9 @@ class Worker(object):
                 #    lpole_set.extend(lpole.value)
                 #    bpole_set.extend(bpole.value)
             endLoop = time.clock()
-            print('time for each pole: ', endLoop - begLoop)
+            npoles += 1
+            if (npoles % 10000) == 0:
+                print('time for each pole: ', endLoop - begLoop)
         return lpole_set, bpole_set, phi1_set, muphi1_set, signal_to_noise_set, n_set
 
 def main(pool, distance=20, filename='output_file.txt', nside=64):

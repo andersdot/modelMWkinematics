@@ -19,6 +19,7 @@ import os.path
 import sys
 import csv
 import schwimmbad
+from astropy.io import ascii
 
 class ArbitraryPoleFrame(coord.BaseCoordinateFrame):
 
@@ -216,6 +217,14 @@ def plotPMdiff(xcenters, Signal_to_noise, dpm1, xedges, yedges, finalhist, phi1,
 
     plt.tight_layout()
     plt.savefig(filename + '.png', figsize=(10, 15))
+    plt.close('all')
+
+def sphereSelection(x, y, cenx, ceny, radius=0.5*u.deg):
+    indices = np.zeros(len(x))
+    for cx, cy in zip(cenx, ceny):
+        tempArray = (x-cx)**2. + (y-cy)**2. <= radius**2.
+        indices =  np.any([tempArray, indices], axis=0)
+    return indices
 
 
 
@@ -262,6 +271,12 @@ class Worker(object):
         pmykey = 'pmdec_new'
         filename_pre = 'test'
 
+        #remove clusters, radius 6 arcminutes
+        filename = 'CompiledSatCatalogv2_gabriel.csv'
+        clusterdata = ascii.read(filename)
+        ind = sphereSelection(data['ra'], data['dec'], clusterdata['ra'], clusterdata['dec'], radius=0.1)
+
+
         #define the velocity of the sun wrt galactic center
         lsr = [11.1, 12.1, 7.25]*u.km/u.s
         galactic_v = [0.0, 220., 0.0]*u.km/u.s
@@ -269,6 +284,8 @@ class Worker(object):
         observed = coord.ICRS(ra=data[xkey]*u.deg, dec=data[ykey]*u.deg,
                               pm_ra_cosdec=data[pmxkey]*u.mas/u.yr, pm_dec=data[pmykey]*u.mas/u.yr,
                               distance=self.distance*u.kpc)
+        observed = observed[~ind] #take out clusters
+
         #take out sun's motion
         observed = observed.transform_to(coord.Galactic)
         rep = observed.cartesian.without_differentials()
@@ -319,6 +336,8 @@ class Worker(object):
             npoles += 1
             if (npoles % 10000) == 0:
                 print('time for each pole: ', endLoop - begLoop)
+            print('number of poles searched: ', npoles)
+            
         return lpole_set, bpole_set, phi1_set, muphi1_set, signal_to_noise_set, n_set
 
 def main(pool, distance=20, filename='output_file.txt', nside=64):
@@ -362,7 +381,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
     print(args)
     #intelligently choose pool based on command line arguments passed
-    pool = schwimmbad.choose_pool(mpi=args.mpi, processes=args.n_cores)
-    filename = 'detections_distance{0:02d}_nside{1:03d}.txt'.format(args.dist, args.nside)
-    #start running
-    main(pool, distance=args.dist, filename=filename, nside=args.nside)
+
+    with schwimmbad.choose_pool(mpi=args.mpi, processes=args.n_cores) as pool:
+        filename = 'detections_distance{0:02d}_nside{1:03d}.txt'.format(args.dist, args.nside)
+        #start running
+        main(pool, distance=args.dist, filename=filename, nside=args.nside)
+    print('finished')

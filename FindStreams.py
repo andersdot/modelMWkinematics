@@ -390,7 +390,7 @@ if __name__ == '__main__':
     #intelligently choose pool based on command line arguments passed
 
     with schwimmbad.choose_pool(mpi=args.mpi, processes=args.n_cores) as pool:
-        filename = 'detections_distance{0:02d}_nside{1:03d}.txt'.format(args.dist, args.nside)
+        filename = 'detections_distance{0:02d}_nside{1:03d}_SN3.txt'.format(args.dist, args.nside)
         #start running
         main(pool, distance=args.dist, filename=filename, nside=args.nside)
     print('finished')

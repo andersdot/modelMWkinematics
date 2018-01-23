@@ -80,7 +80,7 @@ def signal2noise(phi1, phi2, pmphi1, pmphi2, p1, deltaPhi1 = 5.*u.deg, deltaPhi2
                  deltaPMphi1 = 15.*u.mas/u.yr, deltaPMphi2 = 5.*u.mas/u.yr,
                  phi2MaxBackground = 5.0*u.deg, phi2MinBackground = 0.5*u.deg,
                  histBinPM = 1.0*u.mas/u.yr, histBinPhi = 0.1*u.deg,
-                 minstars=1000., minFracBackground = 0.7, plotSNthreshold = 10.,
+                 minstars=1000., minFracBackground = 0.7, plotSNthreshold = 15.,
                  detectionThreshold = 5., filename='sag_pm'):
     phi1min = p1 - deltaPhi1 #80*u.deg #-60.*u.deg #105*u.deg
     phi1max = p1 + deltaPhi1 #120*u.deg #-20.*u.deg #115*u.deg
@@ -274,7 +274,7 @@ class Worker(object):
         #remove clusters, radius 6 arcminutes
         filename = 'CompiledSatCatalogv2_gabriel.csv'
         clusterdata = ascii.read(filename)
-        ind = sphereSelection(data['ra'], data['dec'], clusterdata['ra'], clusterdata['dec'], radius=0.1)
+        ind = sphereSelection(data['ra'], data['dec'], clusterdata['ra'], clusterdata['dec'], radius=0.5)
 
 
         #define the velocity of the sun wrt galactic center
@@ -334,9 +334,9 @@ class Worker(object):
                 #    bpole_set.extend(bpole.value)
             endLoop = time.clock()
             npoles += 1
-            if (npoles % 10000) == 0:
+            if (npoles % 100) == 0:
                 print('time for each pole: ', endLoop - begLoop)
-            print('number of poles searched: ', npoles)
+                print('number of poles searched: ', npoles)
             
         return lpole_set, bpole_set, phi1_set, muphi1_set, signal_to_noise_set, n_set
 

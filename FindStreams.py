@@ -245,7 +245,7 @@ class Worker(object):
 
     #when called, do the work
     def __call__(self, task):
-        #print(task)
+        print('number of tasks on a worker: ', np.shape(task))
         return self.work(task)
 
     #work for each process

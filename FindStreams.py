@@ -81,7 +81,7 @@ def signal2noise(phi1, phi2, pmphi1, pmphi2, p1, deltaPhi1 = 5.*u.deg, deltaPhi2
                  phi2MaxBackground = 5.0*u.deg, phi2MinBackground = 0.5*u.deg,
                  histBinPM = 1.0*u.mas/u.yr, histBinPhi = 0.1*u.deg,
                  minstars=1000., minFracBackground = 0.7, plotSNthreshold = 15.,
-                 detectionThreshold = 5., filename='sag_pm'):
+                 detectionThreshold = 3., filename='sag_pm'):
     phi1min = p1 - deltaPhi1 #80*u.deg #-60.*u.deg #105*u.deg
     phi1max = p1 + deltaPhi1 #120*u.deg #-20.*u.deg #115*u.deg
     phi2min = -deltaPhi2
@@ -253,6 +253,7 @@ class Worker(object):
         #lpole = centers.l
         #bpole = centers.b
 
+        cmCut = True
         #define phi1 array will be the search centers along the great circle
         phiShift = 5.*u.deg #how much to shift each window by
         phi1_search_array = np.arange(0, 360+0.0001, phiShift.value)*u.deg
@@ -271,6 +272,11 @@ class Worker(object):
         pmykey = 'pmdec_new'
         filename_pre = 'test'
 
+        if cmCut:
+            color = data['psfmag_g'] - data['extinction_g'] - (data['psfmag_r'] - data['extinction_r'])
+            mag   = data['psfmag_r'] - data['extinction_r']
+            cmCutIndex = (color >= 0) & (color <= 0.5) & (mag >= 18) & (mag <= 20)
+
         #remove clusters, radius 6 arcminutes
         filename = 'CompiledSatCatalogv2_gabriel.csv'
         clusterdata = ascii.read(filename)
@@ -284,8 +290,9 @@ class Worker(object):
         observed = coord.ICRS(ra=data[xkey]*u.deg, dec=data[ykey]*u.deg,
                               pm_ra_cosdec=data[pmxkey]*u.mas/u.yr, pm_dec=data[pmykey]*u.mas/u.yr,
                               distance=self.distance*u.kpc)
-        observed = observed[~ind] #take out clusters
-
+        #take out clusters
+        if cmCut: observed = observed[cmCutIndex & ~ind]
+        else: observed = observed[~ind]
         #take out sun's motion
         observed = observed.transform_to(coord.Galactic)
         rep = observed.cartesian.without_differentials()
@@ -337,7 +344,7 @@ class Worker(object):
             if (npoles % 100) == 0:
                 print('time for each pole: ', endLoop - begLoop)
                 print('number of poles searched: ', npoles)
-            
+
         return lpole_set, bpole_set, phi1_set, muphi1_set, signal_to_noise_set, n_set
 
 def main(pool, distance=20, filename='output_file.txt', nside=64):

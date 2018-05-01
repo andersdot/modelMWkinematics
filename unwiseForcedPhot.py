@@ -15,7 +15,7 @@ def queryDatabase(query, columns, post_query, cache_file='db.pickle'):
     if not path.exists(cache_file):
         res = sqlutil.get(query.format(','.join(columns), post_query),
                           db='wsdb', host='cappc127.ast.cam.ac.uk',
-                          user='gaia_sprint', password='NOT@Gaia_sprint',
+                          user=user, password=password,
                           asDict=True)
 
         with open(cache_file, "wb") as f:

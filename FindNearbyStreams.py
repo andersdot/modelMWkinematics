@@ -3,6 +3,7 @@ import astropy.units as u
 import astropy.coordinates as coord
 from astropy.coordinates import frame_transform_graph
 from astropy.coordinates.matrix_utilities import matrix_product, matrix_transpose, rotation_matrix
+from astropy.table import Table
 from astropy.io import fits
 import pickle
 import scipy.interpolate as scint
@@ -20,6 +21,7 @@ import sys
 import csv
 import schwimmbad
 from astropy.io import ascii
+import h5py
 
 class ArbitraryPoleFrame(coord.BaseCoordinateFrame):
 
@@ -272,8 +274,8 @@ class Worker(object):
             #columns = list(f['table/columns'])
             columns = ['ra', 'dec', 'pmra', 'pmdec', 'parallax']
             for c in columns: data[c] = f['table/columns/{0}/data'.format(c)][:]
-            
-        c = coord.SkyCoord(ra=data['ra']*u.deg, dec=data['dec']*u.deg, 
+
+        c = coord.SkyCoord(ra=data['ra']*u.deg, dec=data['dec']*u.deg,
                    pm_ra_cosdec = data['pmra']*u.mas/u.yr, pm_dec= data['pmdec']*u.mas/u.yr,
                    distance=1./data['parallax']*u.kpc) #1./ds.parallax.values*u.kpc)
         c = reflex(c)
@@ -289,26 +291,9 @@ class Worker(object):
         filename_pre = 'test'
 
         #remove clusters, radius 6 arcminutes
-        filename = 'CompiledSatCatalogv2_gabriel.csv'
-        clusterdata = ascii.read(filename)
-        ind = sphereSelection(data['ra'], data['dec'], clusterdata['ra'], clusterdata['dec'], radius=0.5)
-
-
-        #define the velocity of the sun wrt galactic center
-        lsr = [11.1, 12.1, 7.25]*u.km/u.s
-        galactic_v = [0.0, 220., 0.0]*u.km/u.s
-        v_sun = coord.CartesianDifferential(lsr + galactic_v)
-        observed = coord.ICRS(ra=data[xkey]*u.deg, dec=data[ykey]*u.deg,
-                              pm_ra_cosdec=data[pmxkey]*u.mas/u.yr, pm_dec=data[pmykey]*u.mas/u.yr,
-                              distance=self.distance*u.kpc)
-        #take out clusters
-        if cmCut: observed = observed[cmCutIndex & ~ind]
-        else: observed = observed[~ind]
-        #take out sun's motion
-        observed = observed.transform_to(coord.Galactic)
-        rep = observed.cartesian.without_differentials()
-        rep = rep.with_differentials(observed.cartesian.differentials['s'] + v_sun)
-        observed_nosunv = coord.Galactic(rep)
+        #filename = 'CompiledSatCatalogv2_gabriel.csv'
+        #clusterdata = ascii.read(filename)
+        #ind = sphereSelection(data['ra'], data['dec'], clusterdata['ra'], clusterdata['dec'], radius=0.5)
 
         #for a given pole, set up lists of possible phi1s that have detections
         phi1_set = []
@@ -326,7 +311,7 @@ class Worker(object):
             pole = coord.Galactic(l=lpole, b=bpole)
             frame = ArbitraryPoleFrame(pole=pole)
             #align frame with pole
-            newframe = observed_nosunv.transform_to(frame)
+            newframe = c.transform_to(frame)
 
             pmphi1 = newframe.pm_phi1_cosphi2
             pmphi2 = newframe.pm_phi2
@@ -334,8 +319,8 @@ class Worker(object):
             phi2 = newframe.phi2
 
             for p1 in phi1_search_array:
-                filename = filename_pre+'_dist{0:03d}_lpole{1:0.2f}_bpole{2:0.2f}_phi1{3:03d}'.format(int(self.distance), lpole.value, bpole.value, int(p1.value))
-                muphi1, signal_to_noise, number_of_detections = signal2noise(phi1, phi2, pmphi1, pmphi2, p1, 
+                filename = filename_pre+'_lpole{0:0.2f}_bpole{1:0.2f}_phi1{2:03d}'.format(lpole.value, bpole.value, int(p1.value))
+                muphi1, signal_to_noise, number_of_detections = signal2noise(phi1, phi2, pmphi1, pmphi2, p1,
                                                                              filename=filename, deltaPhi1 = deltaPhi1, deltaPhi2=deltaPhi2)
                 if number_of_detections > 0:
                     phi1_set.append(p1.value)
@@ -367,8 +352,10 @@ def main(pool, distance=20, filename='output_file.txt', nside=64):
     #only keep poles above equator to not redo calculate with opposite pole
     centers = centers[centers.b >= 0.0*u.deg]
     #pad centers to match to number of processors
-    nprocs = pool.size
     ncenters = centers.shape[0]
+    nprocs = pool.size
+    if nprocs == 0.:
+        nprocs = 1
     ncenters_per_proc = np.ceil(ncenters/float(nprocs))
     npads = nprocs*ncenters_per_proc - ncenters
     skypad = coord.SkyCoord(np.zeros(int(npads)), np.zeros(int(npads)), frame='galactic', unit=u.deg)

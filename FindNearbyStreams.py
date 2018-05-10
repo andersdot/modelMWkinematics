@@ -267,7 +267,7 @@ class Worker(object):
         phiShift = 2.5*u.deg #how much to shift each window by
         phi1_search_array = np.arange(0, 360+0.0001, phiShift.value)*u.deg
         deltaPhi1 = 5.*u.deg #width of window/2
-        deltaPhi2 = 0.125*u.deg #height of window/2
+        deltaPhi2 = 0.25*u.deg #height of window/2
         starttime = time.clock()
         data = Table()
         with h5py.File('nearbyStars.hdf5') as f:

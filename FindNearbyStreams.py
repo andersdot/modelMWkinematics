@@ -229,7 +229,7 @@ def sphereSelection(x, y, cenx, ceny, radius=0.5*u.deg):
     return indices
 
 def reflex(c):
-    c = coord.SkyCoord(c)
+    #c = coord.(c)
     v_sun = coord.Galactocentric.galcen_v_sun
     observed = c.transform_to(coord.Galactic)
     rep = observed.cartesian.without_differentials()
@@ -275,7 +275,7 @@ class Worker(object):
             columns = ['ra', 'dec', 'pmra', 'pmdec', 'parallax']
             for c in columns: data[c] = f['table/columns/{0}/data'.format(c)][:]
 
-        c = coord.SkyCoord(ra=data['ra']*u.deg, dec=data['dec']*u.deg,
+        c = coord.ICRS(ra=data['ra']*u.deg, dec=data['dec']*u.deg,
                    pm_ra_cosdec = data['pmra']*u.mas/u.yr, pm_dec= data['pmdec']*u.mas/u.yr,
                    distance=1./data['parallax']*u.kpc) #1./ds.parallax.values*u.kpc)
         c = reflex(c)
